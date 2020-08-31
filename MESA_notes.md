@@ -1258,9 +1258,9 @@ Once you've set up your optimisation, you will have to compile and run `MESA` in
 ### Specifying seismic constraints
 
 The quantities $T_\text{eff}$, $[\text{Fe/H}]$ etc. are typically measured by spectroscopy, and when including seismic constraints we make a distinction between these and seismological quantities, by splitting up the cost function into two parts as \begin{equation}
-	\chi^2 = (1 - f) \chi^2_\text{spectro} + f \chi^2_\text{seismo}
+	\chi^2 = (1 - f_\text{seis}) \chi^2_\text{spectro} + f_\text{seis} \chi^2_\text{seismo}
 \end{equation}
-up to overall multiplicative constant. The tuning parameter $f$ is controlled by the parameter `chi2_seismo_fraction`. Likewise, recall that there are two main kinds of seismic constraints:
+up to overall multiplicative constant. The tuning parameter $f_\text{seis}$ is controlled by the parameter `chi2_seismo_fraction`. Likewise, recall that there are two main kinds of seismic constraints:
 
 - Global properties, $\Delta\nu$ and $\nu_\text{max}$
 - Local properties, which are constructed out of the individual mode frequencies.
@@ -1290,14 +1290,14 @@ l0_n_obs(:) = -1
 ```
 Note that you may supply radial order identifications with `l0_n_obs`, although in the above example they will be ignored. A similar set of variables is provided up to $l=3$.
 
-Now, the global properties can be (at least approximately) computed directly from the stellar model without necessitating the use of any pulsation code. Conversely, actually running the pulsation code is much more computationally expensive than e.g. evaluating an integral over the stellar structure. Moreover, the frequencies of oscillation evolve very rapidly; the size of typical observational uncertainties potentially correspond to relative changes over the course of $10^{-4}$ Gyr, which is ridiculously small. Therefore, the `astero` module contains controls that will control when, exactly, `MESA` decides to compute mode frequencies. `astero` considers a stellar model to be in one of three different phases:
+Now, the global properties can be (at least approximately) computed directly from the stellar model without necessitating the use of any pulsation code. Conversely, actually running the pulsation code is much more computationally expensive than e.g. evaluating an integral over the stellar structure. Moreover, the frequencies of oscillation evolve very rapidly; the size of typical observational uncertainties potentially correspond to relative changes over the course of $10^{-4}$ Gyr, which is ridiculously small. Therefore, the `astero` module contains controls that will control when, exactly, `MESA` decides to compute mode frequencies. `astero` considers a stellar model to be in one of three different possible states:
 
 - **Cold**: no mode frequencies are computed.
 - **Warm**: Only radial mode freqencies are computed. In order for this to happen, the current stellar model must pass several checks, including:
 	- `min_age_limit` and `Lnuc_div_L_limit`: exclude pre-MS models
 	- `chi2_spectroscopic_limit`: exclude models that don't match spectroscopy
 	- `chi2_delta_nu_limit`: exclude models with different mean densities. **IMPORTANT**: This may still be used even if `chi2_seismo_delta_nu_fraction = 0`.
-- **Hot**: A value of $\chi^2_\text{seismo}$ is computed using only radial mode frequencies for all "Warm" models. If this is lower than `chi2_radial_limit`, then the model is considered "hot", and nonradial mode frequencies are then also computed. Only values of $\chi^2_\text{seismo}$ which include nonradial modes are considered in the computation of $\chi^2_\text{track}$.
+- **Hot**: A value of $\chi^2_\text{seismo}$ is computed using only radial mode frequencies for all models satisfying the "Warm" criteria. If this is lower than `chi2_radial_limit`, then the model is considered "Hot", and nonradial mode frequencies are then also computed. Only values of $\chi^2_\text{seismo}$ for "Hot" models, which include nonradial modes, are considered in the computation of $\chi^2_\text{track}$.
 
 Since it doesn't make sense to adopt a max timestep size of $10^{-4}$ Gyr for the entire evolutionary track, this kind of subdivision allows you to specify different timestep sizes for the "Cold", "Warm", and "Hot" phases.
 
@@ -1330,9 +1330,9 @@ You might want to save the cost function and output parameters of each sample so
 
 ## Common issues: asteroseismology
 
-### Frequency identifications
+### Frequency splitting identifications
 
-Note that `astero` will not let you supply mode identifications for the quantum numbers $m$ for your observed modes. The values used here are determined by matching with the theoretical modes returned from the pulsation code. It's just something you'll have to live with.
+Note that `astero` will not let you supply mode identifications for the quantum numbers $m$ for your observed modes. If you compute frequencies for rotating models, and need to match modes with respect to the rotational splitting, you will need to do this separately. It's unlikely that you'll run into this issue within the confines of this course; conversely, if you're in a situation where the quantum number $m$ matters, you're probably better off writing your own modelling code anyway.
 
 ### Surface Corrections
 
