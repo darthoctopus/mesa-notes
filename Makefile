@@ -10,8 +10,8 @@ parts: MESA_notes.pdf
 	Scripts/excise.sh MESA_notes.pdf 6 11 MESA_2.pdf
 	Scripts/excise.sh MESA_notes.pdf 12 22 MESA_3.pdf
 	Scripts/excise.sh MESA_notes.pdf 23 29 MESA_4.pdf
-	Scripts/excise.sh MESA_notes.pdf 30 33 MESA_5.pdf
-	Scripts/excise.sh MESA_notes.pdf 34 37 MESA_appendix.pdf
+	Scripts/excise.sh MESA_notes.pdf 30 34 MESA_5.pdf
+	Scripts/excise.sh MESA_notes.pdf 35 38 MESA_appendix.pdf
 
 clean:
 	rm MESA_notes.pdf
