@@ -14,6 +14,7 @@ header-includes:
     - \def\subsubsectionautorefname{Section}
     - \newcommand{\apj}{{ApJ}}
     - \newcommand{\apjl}{{ApJL}}
+    - \newcommand{\apjs}{{ApJS}}
     - \newcommand{\ssr}{{SSRv}}
     - \newcommand{\aap}{{A\&A}}
 geometry: margin=1in
@@ -321,7 +322,7 @@ Every one of `MESA`'s configuration variables has a default value, which can be 
 
 There is some perhaps nonintuitive overlap between these (e.g. stopping conditions are mostly found in the `controls` rather than `star_job` namelist), but this description is sufficiently accurate for most use cases. When in doubt, search the relevant `defaults` file (which is full of self-documenting comments — `grep` is your friend), and you'll usually find something useful eventually.
 
-**Remark**: If multiple stopping conditions are specified, *all* of them will be checked for at every timestep. `MESA` will terminate the evolution if any single one of them is triggered.
+**Remark**: By default *all* stopping conditions will be checked for at every timestep, and `MESA` will terminate the evolution if any single one of them is triggered. This can be overridden by setting the `star_job` parameter `required_termination_code_string`.
 
 ---
 
@@ -420,7 +421,7 @@ Do the same for a series of 1 $M_\Sun$ solar-abundance evolutionary tracks, *cet
 
 ### Hydrostatic solver convergence failure during helium flash
 
-As of r11532, evolutions through the tip of the RGB to the HB/RC will fail to converge (usually resulting in the solver trying smaller and smaller step sizes before giving up). This is because this release introduces stricter energy conservation for stellar evolution, at the potential expense of smaller step sizes. Since the tip of the RGB/helium flash yields sudden changes in the energy generation rate, the required stepsizes to comply with these energy conservation requirements can get unphysically small (of order several seconds). There are two possible resolutions to this:
+As of r11532, evolution through the tip of the RGB to the HB/RC will fail to converge (usually resulting in the solver trying smaller and smaller step sizes before giving up). This is because this release introduces stricter energy conservation for stellar evolution, at the potential expense of smaller step sizes. Since the tip of the RGB/helium flash yields sudden changes in the energy generation rate, the required stepsizes to comply with these energy conservation requirements can get unphysically small (of order several seconds). There are two possible resolutions to this:
 
 - Setting `convergence_ignore_equL_residuals = .true.` — this option to ignore the luminosity term in the energy conservation equation is **undocumented**, but used by all of the relevant test suite examples.
 - Setting `use_gold_tolerances = .false.`, reverting energy conservation checking to the behaviour of r10398. This will give you a warning every timestep, unfortunately. On the flip side, this is also *considerably* faster, since it allows the use of much larger timesteps.
@@ -779,6 +780,8 @@ Implement a custom stopping condition (in either `extras_check_model` or `extras
 
 ## Custom physics
 
+\label{sec:exother}
+
 In addition to the stubs exposed in `run_star_extras.f`, `MESA` also contains hooks by which one might override the built-in physics with essentially arbitrary complexity. The generic steps to follow are laid out in the README file in `$MESA_DIR/star/other`, which I recommend you also read. In summary:
 
 0. Set up the `run_star_extras.f` file as described above.
@@ -1044,6 +1047,8 @@ Here is a `GYRE` input file that I have used for some red giant work I've been d
 Note that you can specify multiple copies of each namelist, distinguished with "tags". For example, I have three `mode` namelists, one for each of $l = 0, 1, 2$; I also have two `grid` namelists, one for radial modes and one for nonradial modes. Each of the subsequent namelists are matched up with tagged `mode` namelists via the `tag_list` option, which specify a comma-separated list of tags. If you specify a tag that is not matched by any of the tag lists, the final namelist of that type will be used for calculations (so, for example, I could have omitted the `tag_list` specification in the second `grid` namelist, or only have specified it for either dipole or quadrupole modes, and it still would have yielded the same result). This can potentially allow for some quite versatile behaviour!
 
 ---
+
+\label{sec:exgyre}
 
 ## Exercises: asteroseismology {-}
 
@@ -1360,7 +1365,13 @@ With no element diffusion and overshoot, find the best-fitting model parameters 
 
 **Warning (science)**: The actual posterior distributions for this are highly multimodal (why?). Local estimators of the certainties of e.g. the ages and masses are therefore liable to be significant underestimates.
 
----
+### Exercise: Radius Inflation {-}
+
+Consider the irradiated Hot Jupiter scenario that we implemented additional heating for in the exercise of \autoref{sec:exother}.
+
+**1.** Fixing the irradiation received at the atmosphere to the Jovian value (i.e. flux received at Jupiter's orbit from the Sun's luminosity), using the chemical mixture of @gs98 and the solar-calibrated mixing-length parameter and initial helium abundance that you found earlier, with elemental diffusion active, find the irradiation column depth required to produce a 1 $M_J$ model of 1 $R_J$ at the present solar-system age of 4.569 Gyr. Note that since most planetary models don't have superadiabatic stratification at the outer boundary of the convection zone (see exercises in \autoref{sec:exgyre}), the planetary radius at a given age is quite insensitive to the mixing-length parameter, unlike the stellar case.
+
+**2.** Using this Jupiter-calibrated irradiation column depth, hold all other parameters constant and set the irradiation flux to $8 \times 10^9~\mathrm{erg~s^{-1}~cm^{-2}}$. Find the amount of extra heating (from whatever source you chose, parameterised by `x_ctrl(1)`) required to recover a radius of $1.7~R_J$. This is the most extreme data point of @demory_lack_2011. Repeat this for several masses between 0.7 and 3 $M_J$, and make a plot of `x_ctrl(1)` against the planetary mass.
 
 \newpage
 \appendix
