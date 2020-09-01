@@ -349,6 +349,8 @@ Once you've set this up, try running `MESA` as `./rn` and see what happens. If y
 
 ## Recovering output from `MESA`
 
+\label{sec:SAG}
+
 As `MESA` runs, it will produce output in a log directory (`LOGS` by default) in addition to the stuff it prints to the terminal. There are two main forms of output:
 
 - a "history" file, by default named `history.data`, containing global properties of the star (mass, radius, age, etc). I use the word "global" here in a very wide sense. Generally, anything that can be reduced to a single number at a given instant in time (including core temperature, surface metallicity, or integrals over the entire structure) can be meaningfully written out to the history file. Enabled if `do_history_file` is set to `.true.`, with a new line every $n$ timesteps specified by `history_interval`.
@@ -475,6 +477,10 @@ Inside a plain `work` directory, you will find two Fortran source files in the `
 ```
 
 It is helpful to try to understand what is going on here. When you compile `MESA`, you are creating an executable called `star` in your work directory, that `use`s a module (`run_star`) that resides in `$MESA_DIR`, and which was compiled at installation. This module in turn `use`es a module called `run_star_extras` that does *not* reside in `$MESA_DIR`, and was not compiled at installation. Instead, it is supplied from definitions given in the `src` subdirectory of the work directory — hence the module definition — and is compiled at the same time as the `star` executable. `run_star` expects `run_star_extras` to satisfy a known API — in this case, to provide a standard named set of procedures, all of which have reference implementations in the file `standard_run_star_extras.inc`. These can be overriden by the user at compile time to provide custom behaviour, with more granularity and flexibility than afforded by the usual namelist files. This choice of architecture allows user customisability without requiring you to directly modify the contents of `$MESA_DIR`, so that different work directories run from the same installation of `MESA` can have different custom behaviours.
+
+## Preparing `run_star_extras.f`
+
+\label{sec:setup}
 
 Unfortunately, Fortran will raise compilation errors for multiply-defined procedures (i.e. you can't define a function twice and hope the compiler picks the later definition). In order to do anything useful, therefore, the `include` statement must be replaced with the entire contents of `$MESA_DIR/include/standard_run_star_extras.inc`. If you use `vim`, here is a sequence of steps to follow to do this:
 
@@ -616,7 +622,7 @@ Calculate this quantity for each timestep, and write it out as a supplementary h
 
 A naive implementation of the above will be met with a nasty surprise when the computation is stopped and restarted! This is because any custom module-scope variables that you may have defined (in order to store the immediate history of the evolutionary track) are not saved to snapshots, and are undefined upon restarts.
 
-For simple cases like this, `MESA` allows you to store additional data in the `star` pointer, which can be referenced as `s% xtra(n)` (`real`), `s% ixtra(n)` (`integer`), or `s% lxtra(n)` (`logical`). Each of these are arrays. For readability, I recommend defining integer constants in your module preamble (i.e. `integer, parameter :: my_quantity = 1`) and then indexing these arrays semantically (`s% xtra(my_quantity) = do_thing()`).
+For simple cases like this, `MESA` allows you to store additional data in the `star` pointer, which have types `real(dp) :: s% xtra(n)`, `integer :: s% ixtra(n)`, and `logical :: s% lxtra(n)`. Each of these are arrays. For readability, I recommend defining integer constants in your module preamble (i.e. `integer, parameter :: my_quantity = 1`) and then indexing these arrays semantically (`s% xtra(my_quantity) = do_thing()`).
 
 For more sophisticated cases, e.g. when the quantities in question cannot be easily represented by scalars, it may be desirable to store these variables outside of the star pointer. In such cases it might be better to directly customise the i/o routines associated with reading and writing snapshots. `MESA` provides hooks to do this, although they're less well-documented:
 
@@ -665,7 +671,7 @@ For more sophisticated cases, e.g. when the quantities in question cannot be eas
 
 Armed with this knowledge, modify your solution to the previous exercise so that it continues to work across restarts.
 
-**Remark**: In previous versions of `MESA`, this was done with a subroutine called `extras_move_info`, with helper subroutines `move_int`, `move_dbl` etc. This was largely limited to storing scalars. The API for this still exists, but is no longer recommended.
+**Remark**: In previous versions of `MESA`, this was done with a subroutine called `extras_move_info`, with helper subroutines `move_int`, `move_dbl` etc. This was largely limited to storing scalars. The API for this still exists, but is no longer recommended for use.
 
 ---
 
@@ -680,11 +686,11 @@ Generically, use `extras_check_model` to determine if the timestep is acceptable
 
 You can do basically anything to the `star_data` structure inside each of the functions. Common examples are:
 
-- Changing the return code of the function depending on the state of the `star_data` structure
-- Changing controls associated with the `star_data` structure (e.g. changing physics based on evolutionary state instead of using the input namelists)
-- Directly modifying physical properties of the `star_data` structure (e.g. depositing mass into the outer layers)
+- Changing the return code of the function depending on the state of the `star_data` structure,
+- Changing controls associated with the `star_data` structure (e.g. changing physics based on evolutionary state instead of using the input namelists),
+- Directly modifying physical properties of the `star_data` structure (e.g. depositing mass or heat into the outer layers to simulate accretion events).
 
-However, I recommend that you limit yourself to only manipulating the logistical rather than physical properties of the `star_data` structure, since any modifications to the stellar model proper will probably not be physically consistent, e.g. knocking it out of hydrostatic equilibrium. 
+However, I recommend that you limit yourself to only manipulating the logistical rather than physical properties of the `star_data` structure, since any modifications to the stellar model proper will probably not be physically consistent, e.g. knocking it out of hydrostatic equilibrium. If you need to modify the physical properties of the model, use a custom physics hook instead (next section).
 
 ### Worked Example
 
@@ -782,9 +788,11 @@ Implement a custom stopping condition (in either `extras_check_model` or `extras
 
 \label{sec:exother}
 
-In addition to the stubs exposed in `run_star_extras.f`, `MESA` also contains hooks by which one might override the built-in physics with essentially arbitrary complexity. The generic steps to follow are laid out in the README file in `$MESA_DIR/star/other`, which I recommend you also read. In summary:
+In addition to the stubs exposed in `run_star_extras.f`, `MESA` also contains hooks by which one might override the built-in physics with essentially arbitrary complexity. You should limit what you do in each of these hooks to only the semantically relevant quantities (e.g. don't add mass in the the hook that changes the nuclear reaction rates). The reason for this is that the physics operations are done in an order that ensures (or at least gives better) numerical stability, and if you do things out of order, bad things may happen to the model.
 
-0. Set up the `run_star_extras.f` file as described above.
+The generic steps to follow are laid out in the README file in `$MESA_DIR/star/other`, which I recommend you also read. In summary:
+
+0. Set up the `run_star_extras.f` file as described above in \autoref{sec:setup}.
 1. Copy the template routine from the appropriate file in `$MESA_DIR/star/other` to `run_star_extras.f`, and modify appropriately.
 2. Edit the subroutine `extras_controls` to set the appropriate pointer to your custom physics subroutine (e.g. `other_diffusion`)
 3. In the `controls` namelist, enable your custom physics by setting, e.g., `use_other_diffusion = .true.`
@@ -1083,12 +1091,12 @@ In the WKB limit, adiabatic oscillations have a radial wavevector
     S_l^2 = {l(l+1) \over r^2} \cdot c_s^2.
 \end{equation}
 
-[^umlauts]: look upon my glöriöüs ümläüts and despair
+[^umlauts]: gäzë üpön mÿ glörïöüs ümläüts änd dëspäïr
 [^bv]: see <http://hyad.es/bv>
 
 Waves propagate when $k_r^2 > 0$, and are evanescent when $k_r^2 < 0$. This means that eigenvalues can only exist for $\omega$ such that there exist some intervals of the radial coordinate where $(\omega^2 > S_l^2) \land (\omega^2 > N^2)$, and/or $(\omega^2 < S_l^2) \land (\omega^2 < N^2)$, which will be where the corresponding eigenfunctions are propagating instead of evanescent.
 
-For dipole modes ($l=1$), make a propagation diagram (i.e. a plot of both of the above quantities against either the physical radius or the acoustic radial coordinate — I recommend the latter) from the provided `GYRE` structure file.
+For dipole modes ($l=1$), make a propagation diagram — i.e. a plot of both of the above quantities against either the physical radius or the acoustic radial coordinate (I recommend the latter) from the provided `GYRE` structure file.
 
 **Hint**: You may find code in the appendices to be useful.
 
@@ -1116,7 +1124,7 @@ For this exercise, you may either use the file `HJ.GYRE` that I've placed on Can
 
 **1. Propagation diagram**
 
-For the provided model, construct a propagation diagram as above. How does it differ from that of the two stellar models?
+For the provided model, construct a propagation diagram as above. How does it differ from that of the three stellar models?
 
 **2. Ionization zones**
 
@@ -1124,9 +1132,10 @@ Plot $\Gamma_1$ against $T$ for each of the above models, on the same axes. For 
 
 **3. Superadiabatic regions**
 
-Plot the dimensionless entropy gradient \begin{equation}
-	-\left(H_p \over c_P\right){\mathrm d s \over \mathrm d r} = \nabla - \nabla_\text{ad} + {\phi\over \delta}\nabla_\mu = -{N^2 H_p \over g \cdot \delta}
-\end{equation} against $x$ for each of the above models, on the same axes. For the stellar models, you should see a narrowly confined enhancement just under the photosphere. This is called the "superadiabatic layer" because the temperature gradient is much higher than the adiabatic lapse rate. What does the outside of the HJ model look like, and why?
+The superadiabatic gradient that you plotted back in \autoref{sec:SAG}, with the inclusion of an additional term for the chemical gradient, is related to the Brunt-Väisälä frequency in that both are proportional to the dimensionless entropy gradient: \begin{equation}
+	-\left(H_p \over c_P\right){\mathrm d s \over \mathrm d r} = \nabla - \nabla_\text{ad} + {\phi\over \delta}\nabla_\mu = -{N^2 H_p \over g \cdot \delta}.
+\end{equation}
+Plot this quantity against $x$ for each of the above models, on the same axes. For the stellar models, you should see a narrowly confined enhancement just under the photosphere. This is called the "superadiabatic layer" because the temperature gradient is much higher than the adiabatic lapse rate; equivalently, the superadiabatic gradient is large. What does this part of the HJ model look like, and why?
 
 ---
 
@@ -1176,13 +1185,13 @@ export HDF5_USE_FILE_LOCKING=FALSE
 
 You might see references to a `GYRE` wiki hosted on BitBucket; it has recently become defunct, as BitBucket has finally discontinued support for Mercurial repositories. Rich has recently migrated `GYRE` to `git` and, while he was at it, GitHub; `GYRE` is now hosted at <http://github.com/rhdtownsend/gyre>, and the GYRE documentation can be found at <https://gyre.readthedocs.io/en/latest/>.
 
+More generally, `GYRE` packs a general-purpose BVP solver under the hood, whose application to asteroseismology is done through a thin wrapper around the oscillation equations in particular. It's possible to use it for other problems, such as finding unstable modes of collapsing disks, or even just pedagogical demonstration like finding the normal modes of oscillations of a string. If you plan to use `GYRE` for serious science, I strongly recommend you acquaint yourself with the GYRE documentation and/or Rich Townsend better than these notes can hope to do.
+
 ## Planned changes
 
 Rich is currently undertaking a major refactoring of `GYRE` in anticipation of a 6.0 release; many things are getting rearranged at the moment. The above input files are liable to break; in particular, Rich plans to introduce new namelists (e.g. tidal forcing) and rename several variables (e.g. `alpha` for the grid parameters will be renamed to another letter, to avoid confusion with different switches in the standard equations). Hopefully things will stabilise after the 6.0 release.
 
 Of particular note is that many of the current qualitative flags will be replaced with quantitative ones. For example, previously the Cowling approximation was effected by setting `osc % cowling_approx = .true.`; in GYRE 6.0, it will be effected by setting `osc % alpha_gr = 0.`, where $\alpha_\text{gr}$ is a tuning parameter in the oscillation equations that is $1$ for the full equations and $0$ in the Cowling approximation.
-
-More generally, `GYRE` packs a general-purpose BVP solver under the hood, whose application to asteroseismology is done through a thin wrapper around the oscillation equations in particular. It's possible to use it for other problems, such as finding unstable modes of collapsing disks, or even just pedagogical demonstration like the oscillations of a string. If you plan to use `GYRE` for serious science, I strongly recommend you acquaint yourself with the GYRE documentation and/or Rich Townsend better than these notes can hope to do.
 
 ## Alternatives
 
@@ -1250,7 +1259,7 @@ Generically, there are two sets of things you need to worry about:
 - Input parameters $x_i$ (in the context of \autoref{eq:cost}), such as the mass, initial helium abundance, etc. For each of these, there is a family of namelist variables in the pattern e.g. `vary_mass`, `first_mass`, `min_mass`, `max_mass`, and `delta_mass` (if you are doing a grid scan).
 - Output parameters/constraints $y_i$, such as the effective temperature, log luminosity, radius, etc. For each of them there is a family of namelist variables in the pattern `include_Teff_in_chi2_spectro`, `Teff_target`, `Teff_sigma` (for observational errors). The seismic constraints work a little differently, and I will discuss them in more detail later.
 
-Note that if you set `vary_x` to `.false.`, the value you specify in `first_x` will be used for all computations. Also, you will need to set `search_type` to something other than `use_first_values` to get `astero` to do anything interesting. Otherwise, the configuration file is pretty self-documenting, so I won't go through everything in detail.
+Note that if you set `vary_x` to `.false.`, the value you specify in `first_x` will be used for all computations. Also, you will need to set `search_type` to something other than `use_first_values` to get `astero` to do anything interesting; I recommend setting it to `simplex` at first, to get a rough feel for how the optimisation works. Otherwise, the configuration file is pretty self-documenting, so I won't go through everything in detail.
 
 ### Running and recovering output
 
@@ -1262,7 +1271,7 @@ Once you've set up your optimisation, you will have to compile and run `MESA` in
 
 ### Specifying seismic constraints
 
-The quantities $T_\text{eff}$, $[\text{Fe/H}]$ etc. are typically measured by spectroscopy, and when including seismic constraints we make a distinction between these and seismological quantities, by splitting up the cost function into two parts as \begin{equation}
+The quantities $T_\text{eff}$, $[\text{Fe/H}]$ etc. are typically measured by spectroscopy, and when including seismic constraints in addition to these, `astero` distinguishes them by splitting up the cost function into two parts as \begin{equation}
 	\chi^2 = (1 - f_\text{seis}) \chi^2_\text{spectro} + f_\text{seis} \chi^2_\text{seismo}
 \end{equation}
 up to overall multiplicative constant. The tuning parameter $f_\text{seis}$ is controlled by the parameter `chi2_seismo_fraction`. Likewise, recall that there are two main kinds of seismic constraints:
@@ -1293,9 +1302,9 @@ l0_obs(9) = 1250.12d0
 l0_obs_sigma(9) = 0.89d0
 l0_n_obs(:) = -1
 ```
-Note that you may supply radial order identifications with `l0_n_obs`, although in the above example they will be ignored. A similar set of variables is provided up to $l=3$.
+Note that you may supply radial order identifications with `l0_n_obs`, although in the above example they will be ignored. If these are not provided, `astero` will perform an iterative matching procedure with the mode frequencies returned from the pulsation code, and adopt the theoretical values. Similar sets of variables are provided up to $l=3$ (inclusive).
 
-Now, the global properties can be (at least approximately) computed directly from the stellar model without necessitating the use of any pulsation code. Conversely, actually running the pulsation code is much more computationally expensive than e.g. evaluating an integral over the stellar structure. Moreover, the frequencies of oscillation evolve very rapidly; the size of typical observational uncertainties potentially correspond to relative changes over the course of $10^{-4}$ Gyr, which is ridiculously small. Therefore, the `astero` module contains controls that will control when, exactly, `MESA` decides to compute mode frequencies. `astero` considers a stellar model to be in one of three different possible states:
+Now, the global properties can be (at least approximately) computed directly from the stellar model without necessitating the use of any pulsation code. Conversely, actually running the pulsation code is much more computationally expensive than e.g. evaluating an integral over the stellar structure. Moreover, the frequencies of oscillation evolve very rapidly; the size of typical observational uncertainties potentially correspond to relative changes over the course of $10^{-5}$ Gyr, which is ridiculously small. Since it doesn't make sense to adopt a max timestep size of $10^{-5}$ Gyr for the entire evolutionary track, the `astero` module contains controls that will control when, exactly, `MESA` decides to compute mode frequencies, or adopt smaller timesteps. `astero` considers a stellar model to be in one of several different possible states:
 
 - **Cold**: no mode frequencies are computed.
 - **Warm**: Only radial mode freqencies are computed. In order for this to happen, the current stellar model must pass several checks, including:
@@ -1304,7 +1313,7 @@ Now, the global properties can be (at least approximately) computed directly fro
 	- `chi2_delta_nu_limit`: exclude models with different mean densities. **IMPORTANT**: This may still be used even if `chi2_seismo_delta_nu_fraction = 0`.
 - **Hot**: A value of $\chi^2_\text{seismo}$ is computed using only radial mode frequencies for all models satisfying the "Warm" criteria. If this is lower than `chi2_radial_limit`, then the model is considered "Hot", and nonradial mode frequencies are then also computed. Only values of $\chi^2_\text{seismo}$ for "Hot" models, which include nonradial modes, are considered in the computation of $\chi^2_\text{track}$.
 
-Since it doesn't make sense to adopt a max timestep size of $10^{-4}$ Gyr for the entire evolutionary track, this kind of subdivision allows you to specify different timestep sizes for the "Cold", "Warm", and "Hot" phases.
+Each of these states has an associated max timestep, set by the parameters e.g. `max_yrs_dt_when_cold`, etc. In addition, `astero` provides a further set of three timestep controls for "Hot" models. In particular, the argument `max_yrs_dt_chi2_small_limit` sets a max timestep size for models with $\chi^2$ less than `chi2_limit_for_small_timesteps`, and similar pairs of variables exist for "smaller" and "smallest" timesteps.
 
 ## Common issues: logistics
 
@@ -1331,7 +1340,7 @@ def cost(*x):
 best_fit = do_sophisticated_optimisation(cost, x0, *args, **kwargs)
 ```
 
-You might want to save the cost function and output parameters of each sample somewhere convenient, since they're reset each time you run `astero`.
+You might want to save the cost function and output parameters of each sample somewhere convenient, since they're reset each time you run `astero`. This allows you to use `astero` in conjunction with, for example, the Levenberg-Marquardt or BFGS gradient-based optimisation schemes (which require the numerical computation of local derivatives) that come packaged with `scipy`. For problems where multimodality isn't an issue, these generally yield much faster convergence, and also allow you to estimate uncertainties from the numerical derivatives. Of course, if you're using the Levenberg-Marquardt scheme, you should use the (signed) residual vector rather than naively ingest `astero`'s computed cost function.
 
 ## Common issues: asteroseismology
 
@@ -1353,7 +1362,7 @@ Using the @gs98 abundance mixture and opacities, with element diffusion enabled 
 
 ### Exercise: Spectroscopic modelling of ι Draconis {-}
 
-With no element diffusion and overshoot, find the best-fitting model parameters (including age) that match the following global constraints:
+With no element diffusion or convective overshoot, find the best-fitting model parameters (including age) that match the following global constraints:
 
 - $\Delta\nu = 4.02 \pm 0.02~\mu\text{Hz}$
 - $\nu_\text{max} = 38.4 \pm 0.5~\mu\text{Hz}$
@@ -1361,9 +1370,9 @@ With no element diffusion and overshoot, find the best-fitting model parameters 
 - $[\text{Fe/H}] = 0.03 \pm 0.08~\mathrm{dex}$
 - $L = 52.78 \pm 2.10 L_\odot$
 
-**Warning (logistics)**: This may take you quite a long time, since the star is quite evolved.
+**Warning (logistics)**: This exercise is optional, as it may take you quite a long time, since the star is quite evolved.
 
-**Warning (science)**: The actual posterior distributions for this are highly multimodal (why?). Local estimators of the certainties of e.g. the ages and masses are therefore liable to be significant underestimates.
+**Warning (science)**: The actual posterior distributions for this are highly multimodal (why?). Local estimators of the uncertainties of e.g. the ages and masses are therefore liable to be significant underestimates.
 
 ### Exercise: Radius Inflation {-}
 
