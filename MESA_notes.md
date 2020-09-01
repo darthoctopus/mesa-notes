@@ -526,7 +526,7 @@ In fact, each of the procedures in the above figure can also be overriden by mod
 
 The generic structure of all of these procedures is as follows:
 
-1. The first few lines are **type declarations**: we have an integer `id` (as more than one `star` can be in play, e.g. in a `binary` simulation), an integer error code, and a pointer to a `star_info` object named `s`.
+1. The first few lines are **variable declarations** (aka type statements). We have an integer `id` (as more than one `star` can be in play, e.g. in a `binary` simulation), an integer error code, and a pointer to a `star_info` object named `s`.
 2. We initialise values: the error code is set to 0, and the pointer `s` is mapped to the actual `star_info` object. If this fails, `ierr` is set to a nonzero value, and the procedure will exit. If this happens your `star` executable will also exit with an error.
 3. Various attributes of the `star_info` object `s` are set (yes, you can do object-oriented programming in Fortran!). The only things being done here are setting various pointers to procedures defined elsewhere in this file. To customise behaviour, either modify these procedures, or change the pointer to point at a different, user-supplied procedure.
 
@@ -793,7 +793,7 @@ Each of these hooks is fairly idiosyncratic, and it doesn't make much sense for 
 
 ### Worked Example: Soft Diffusion Turnoff
 
-Element diffusion is known to produce unphysical results for high-mass stars with very thin or nonexistent convective envelopes. One mitigation strategy is to turn it off at higher masses, but naively this introduces discontinuities for mass ranges containing this cutoff point. To get around this, one possible strategy is as follows: we compute the required diffusion coefficients as needed. However, we then apply a multiplier $C(M) \le 1$ to the diffusion coefficient. For example, @viani_investigating_2018 suggest
+Element diffusion is known to produce unphysical results for high-mass stars with very thin or nonexistent convective envelopes. One mitigation strategy is to turn it off at higher masses, say above some predetermined mass $M_0$ above which we don't want diffusion to happen, but this naive strategy introduces discontinuities for mass ranges containing this cutoff point. To get around this, one possible alternative is as follows: we compute the diffusion coefficients as usual. However, we then apply a multiplier $C(M) \le 1$ to the diffusion coefficient before it is used by the solver. This multiplier is constructed so that $C \to 1$ for $M \ll M_0$ and $C \to 0$ for $M \gg M_0$. For example, @viani_investigating_2018 suggest
 \begin{equation}
     C(M) = \left\{ \begin{array}{cc}
 \exp \left[- {\left(M/M_\odot - 1.25\right)^2 \over 2 (0.085)^2}\right] & M/M_\odot > 1.25\\
@@ -868,7 +868,7 @@ This also means that, if you want to do a quick comparison of the results with a
 
 ---
 
-### Exercise: Hot Jupiter {-}
+### Exercise: Core Heating in a Hot Jupiter {-}
 
 **a.** Construct a Hot Jupiter model, starting from a sphere already in hydrostatic equilibrium (`MESA` doesn't do protoplanetary disks, unfortunately). Terminate the evolution at an age of 1 Gyr (roughly the current solar system age). You may use the test suite examples as a guide. I would personally set the following parameters:
 
@@ -901,7 +901,7 @@ Possible formulations of this include terms associated with MHD ohmic heating [@
 
 **c.** Now, obviously it's not physical to introduce heating into a single mesh point; if you're not careful, this can cause Bad Things to occur (for instance, it may cause your model to go out of hydrostatic equilibrium, or at least give the hydro solver a hard time converging to a consistent state). Rather than depositing this extra heat in the central mesh point, introduce smoothing in terms of a half-Gaussian kernel (becomes a Gaussian thanks to spherical symmetry) of fixed fractional radius, which you may optionally define with `x_ctrl(2)`.
 
-**d.** This extra heating produces "radius inflation". The reason why there are papers investigating radius inflation is because inferred transit radii of gas giants are uniformly smaller than predicted otherwise. Compare the increase in radius that you obtain from your extra heating to when no extra heating is induced, by plotting curves of $R$ against $t$ for different values of your overall multiplier and smoothing width. Remember that you will need to set `use_other_energy = .true.` in the `controls` namelist to see an effect.
+**d.** This extra heating produces "radius inflation". The reason why there are papers investigating radius inflation at all is because the radii of photometric gas giants, inferred from transit depths, are uniformly larger than predicted from naive modelling. Compare the increase in radius that you obtain from your extra heating to when no extra heating is induced, by plotting families of curves of $R$ against $t$ for different values of your overall multiplier `x_ctrl(1)` and smoothing width `x_ctrl(2)`. Remember that you will need to set `use_other_energy = .true.` in the `controls` namelist to see an effect.
 
 ---
 
@@ -1369,7 +1369,7 @@ With no element diffusion and overshoot, find the best-fitting model parameters 
 
 Consider the irradiated Hot Jupiter scenario that we implemented additional heating for in the exercise of \autoref{sec:exother}.
 
-**1.** Fixing the irradiation received at the atmosphere to the Jovian value (i.e. flux received at Jupiter's orbit from the Sun's luminosity), using the chemical mixture of @gs98 and the solar-calibrated mixing-length parameter and initial helium abundance that you found earlier, with elemental diffusion active, find the irradiation column depth required to produce a 1 $M_J$ model of 1 $R_J$ at the present solar-system age of 4.569 Gyr. Note that since most planetary models don't have superadiabatic stratification at the outer boundary of the convection zone (see exercises in \autoref{sec:exgyre}), the planetary radius at a given age is quite insensitive to the mixing-length parameter, unlike the stellar case.
+**1.** Fixing the irradiation received at the atmosphere to the Jovian value (i.e. flux received at Jupiter's orbit from the Sun's luminosity), using the chemical mixture of @gs98, the solar-calibrated mixing-length parameter and initial helium abundance that you found earlier, and element diffusion, find the irradiation column depth required to produce a 1 $M_J$ model of 1 $R_J$ at the present solar-system age of 4.569 Gyr. Note that since most planetary models don't have superadiabatic stratification at the outer boundary of the convection zone (see exercises in \autoref{sec:exgyre}), the planetary radius at a given age is quite insensitive to the mixing-length parameter, unlike the stellar case.
 
 **2.** Using this Jupiter-calibrated irradiation column depth, hold all other parameters constant and set the irradiation flux to $8 \times 10^9~\mathrm{erg~s^{-1}~cm^{-2}}$. Find the amount of extra heating (from whatever source you chose, parameterised by `x_ctrl(1)`) required to recover a radius of $1.7~R_J$. This is the most extreme data point of @demory_lack_2011. Repeat this for several masses between 0.7 and 3 $M_J$, and make a plot of `x_ctrl(1)` against the planetary mass.
 
